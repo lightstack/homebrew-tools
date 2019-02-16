@@ -3,9 +3,9 @@ class Go < Formula
   homepage "https://golang.org"
 
   stable do
-    url "https://dl.google.com/go/go1.11.src.tar.gz"
-    mirror "https://fossies.org/linux/misc/go1.11.src.tar.gz"
-    sha256 "afc1e12f5fe49a471e3aae7d906c73e9d5b1fdd36d52d72652dde8f6250152fb"
+    url "https://dl.google.com/go/go1.11.5.src.tar.gz"
+    mirror "https://fossies.org/linux/misc/go1.11.5.src.tar.gz"
+    sha256 "bc1ef02bb1668835db1390a2e478dcbccb5dd16911691af9d75184bbe5aa943e"
 
     go_version = version.to_s.split(".")[0..1].join(".")
     resource "gotools" do
@@ -15,10 +15,9 @@ class Go < Formula
   end
 
   bottle do
-    sha256 "46c54a3db461ce4ab9450991a84859c5d3e7bfc908ac1e99cc5b6dff0dea0940" => :mojave
-    sha256 "d2dfd9846bc03498dd69c01eaccc0a3018a66d00864d7433d70f07645aac6a40" => :high_sierra
-    sha256 "658842f7da7e1e922b4242f14df5dcd7c7b42055d36d3b04997be4b2f00a6c75" => :sierra
-    sha256 "ebce66f5a06cdb481241bf1952792b1569a9fee0c5ea5747fc5a13d4f1e87cbc" => :el_capitan
+    sha256 "d67c2cf910dc40efa48b5c5f96c0fbf2012310bea4c39227d257c3f3e108c93b" => :mojave
+    sha256 "81de7cb46a2dcc5dd6248c53daac11dc6123ebaa9a03071d6cf4d578f7e26016" => :high_sierra
+    sha256 "6b3c580ad568f04cbaf3eb2dca9f4ce3bb11e071f7340b172a8a2ade2555ded4" => :sierra
   end
 
   head do
@@ -28,9 +27,6 @@ class Go < Formula
       url "https://go.googlesource.com/tools.git"
     end
   end
-
-  option "without-cgo", "Build without cgo (also disables race detector)"
-  option "without-race", "Build without race detector"
 
   depends_on :macos => :yosemite
 
@@ -42,13 +38,18 @@ class Go < Formula
   end
 
   def install
+    # Temporary workaround for garbage folders which were included in the 1.11.5 release tarball
+    mv Dir.glob("go/*"), "./"
+    rm_rf "go"
+    rm_rf "gocache"
+    rm_rf "tmp"
+
     (buildpath/"gobootstrap").install resource("gobootstrap")
     ENV["GOROOT_BOOTSTRAP"] = buildpath/"gobootstrap"
 
     cd "src" do
       ENV["GOROOT_FINAL"] = libexec
       ENV["GOOS"]         = "darwin"
-      ENV["CGO_ENABLED"]  = "0" if build.without?("cgo")
       system "./make.bash", "--no-clean"
     end
 
@@ -57,14 +58,11 @@ class Go < Formula
     libexec.install Dir["*"]
     bin.install_symlink Dir[libexec/"bin/go*"]
 
-    # Race detector only supported on amd64 platforms.
-    # https://golang.org/doc/articles/race_detector.html
-    if build.with?("cgo") && build.with?("race") && MacOS.prefer_64_bit?
-      system bin/"go", "install", "-race", "std"
-    end
+    system bin/"go", "install", "-race", "std"
 
     # Build and install godoc
     ENV.prepend_path "PATH", bin
+    ENV["GO111MODULE"] = "on"
     ENV["GOPATH"] = buildpath
     (buildpath/"src/golang.org/x/tools").install resource("gotools")
     cd "src/golang.org/x/tools/cmd/godoc/" do
@@ -74,22 +72,10 @@ class Go < Formula
     bin.install_symlink libexec/"bin/godoc"
   end
 
-  def caveats; <<~EOS
-    A valid GOPATH is required to use the `go get` command.
-    If $GOPATH is not specified, $HOME/go will be used by default:
-      https://golang.org/doc/code.html#GOPATH
-
-    You may wish to add the GOROOT-based install location to your PATH:
-      export PATH=$PATH:#{opt_libexec}/bin
-  EOS
-  end
-
   test do
     (testpath/"hello.go").write <<~EOS
       package main
-
       import "fmt"
-
       func main() {
           fmt.Println("Hello World")
       }
@@ -103,10 +89,7 @@ class Go < Formula
     assert_predicate libexec/"bin/godoc", :exist?
     assert_predicate libexec/"bin/godoc", :executable?
 
-    if build.with? "cgo"
-      ENV["GOOS"] = "freebsd"
-      system bin/"go", "build", "hello.go"
-    end
+    ENV["GOOS"] = "freebsd"
+    system bin/"go", "build", "hello.go"
   end
 end
-
